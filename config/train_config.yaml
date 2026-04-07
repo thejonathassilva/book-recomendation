@@ -1,0 +1,33 @@
+mlflow:
+  experiment_name: book-recommendation
+
+data:
+  test_size: 0.2
+  random_state: 42
+  min_user_interactions: 3
+  min_book_interactions: 3
+
+training:
+  algorithms:
+    - content_tfidf
+    - collaborative_user_user
+    - matrix_svd
+    - hybrid_xgboost
+    - neural_mlp
+
+evaluation:
+  k_list: [5, 10]
+  metrics:
+    - precision_at_k
+    - recall_at_k
+    - ndcg_at_k
+    - map_at_k
+
+# Métrica “âncora” para slides e comparação entre algoritmos (deve existir em evaluation.k_list).
+presentation:
+  primary_k: 10
+
+hybrid:
+  user_history_weight: 0.6
+  similar_users_weight: 0.4
+  decay_rate: 0.005

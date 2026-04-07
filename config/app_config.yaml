@@ -1,0 +1,19 @@
+app:
+  name: bookstore-ml
+  api_prefix: /api/v1
+
+recommendation:
+  user_history_weight: 0.6
+  similar_users_weight: 0.4
+  decay_rate: 0.005
+  demographic_weight_in_similarity: 0.3
+  behavioral_weight_in_similarity: 0.7
+  similar_users_top_k: 50
+  default_recommendation_limit: 20
+
+cache:
+  recommendation_ttl_seconds: 3600
+
+mlflow:
+  experiment_name: book-recommendation
+  tracking_uri: ${MLFLOW_TRACKING_URI:http://localhost:5000}
