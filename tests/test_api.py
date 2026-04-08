@@ -47,7 +47,7 @@ def test_register_login_recommendations(client, db_session):
     token = r2.json()["access_token"]
     books = client.get("/api/v1/catalog/books")
     assert books.status_code == 200
-    assert len(books.json()) >= 1
+    assert len(books.json()["items"]) >= 1
     rec = client.get("/api/v1/recommendations?limit=5", headers={"Authorization": f"Bearer {token}"})
     assert rec.status_code == 200
     data = rec.json()
@@ -65,7 +65,7 @@ def test_register_login_recommendations(client, db_session):
     assert patch.status_code == 200
     assert patch.json()["region"] == "MG"
 
-    book_list = books.json()
+    book_list = books.json()["items"]
     b2_id = next(b["book_id"] for b in book_list if b["title"] == "Livro B")
     buy = client.post(
         "/api/v1/purchases",

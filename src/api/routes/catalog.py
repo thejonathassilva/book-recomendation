@@ -1,13 +1,15 @@
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.models.schemas import BookOut, CategoryWeightUpdate
+from src.api.models.schemas import BookListPage, BookOut, CategoryWeightUpdate
 from src.api.settings import get_settings
 from src.data.database import get_db
 from src.data.models import Book, Category, CategoryWeight
+from src.data.repositories import books as books_repo
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -26,19 +28,42 @@ def _book_out(b: Book) -> BookOut:
     )
 
 
-@router.get("/books", response_model=list[BookOut])
-def list_books(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)) -> list[BookOut]:
-    from sqlalchemy.orm import joinedload
-
-    stmt = (
-        select(Book)
-        .options(joinedload(Book.category))
-        .order_by(Book.book_id)
-        .offset(offset)
-        .limit(min(limit, 200))
+@router.get("/books", response_model=BookListPage)
+def list_books(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    category_id: int | None = Query(None, description="Filtrar por categoria"),
+    q: str | None = Query(None, description="Texto no título (contém, sem diferenciar maiúsculas)"),
+    author: str | None = Query(None, description="Texto no autor (contém)"),
+    min_price: float | None = Query(None, ge=0),
+    max_price: float | None = Query(None, ge=0),
+    sort: str = Query("book_id", description="book_id | title | price_asc | price_desc"),
+    db: Session = Depends(get_db),
+) -> BookListPage:
+    allowed_sort = {"book_id", "title", "price_asc", "price_desc"}
+    if sort not in allowed_sort:
+        sort = "book_id"
+    min_d = Decimal(str(min_price)) if min_price is not None else None
+    max_d = Decimal(str(max_price)) if max_price is not None else None
+    if min_d is not None and max_d is not None and min_d > max_d:
+        min_d, max_d = max_d, min_d
+    rows, total = books_repo.catalog_search(
+        db,
+        limit=limit,
+        offset=offset,
+        category_id=category_id,
+        q=q,
+        author=author,
+        min_price=min_d,
+        max_price=max_d,
+        sort=sort,
     )
-    books = list(db.execute(stmt).unique().scalars().all())
-    return [_book_out(b) for b in books]
+    return BookListPage(
+        items=[_book_out(b) for b in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/books/{book_id}", response_model=BookOut)

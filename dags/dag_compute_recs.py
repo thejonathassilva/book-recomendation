@@ -19,7 +19,7 @@ default_args = {
 }
 
 
-def precompute_recommendations(limit_users: int = 500, rec_limit: int = 20) -> None:
+def precompute_recommendations(limit_users: int = 500, rec_limit: int = 50) -> None:
     from sqlalchemy.orm import Session
 
     from src.data.database import SessionLocal

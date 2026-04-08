@@ -57,9 +57,21 @@ class BookOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BookListPage(BaseModel):
+    items: list[BookOut]
+    total: int
+    limit: int
+    offset: int
+
+
 class RecommendationItem(BaseModel):
     book: BookOut
     score: float
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Força relativa entre as sugestões desta resposta (0–1); não é P(click) calibrada.",
+    )
 
 
 class CategoryWeightUpdate(BaseModel):

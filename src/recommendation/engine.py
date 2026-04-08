@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import numpy as np
 from sqlalchemy.orm import Session
 
-from src.data.models import Book, User
+from src.data.models import Book, Purchase, User
 from src.data.repositories import books as books_repo
 from src.data.repositories import purchases as purchases_repo
 from src.data.repositories import users as users_repo
@@ -59,6 +59,7 @@ class EngineConfig:
     similar_users_top_k: int = 50
     max_candidates: int = 500
     config_dir: str | None = None
+    tfidf_max_books: int = 12000
 
     def __post_init__(self) -> None:
         if os.environ.get("REC_W_OWN"):
@@ -67,6 +68,9 @@ class EngineConfig:
             self.similar_users_weight = float(os.environ["REC_W_SIM"])
         if os.environ.get("REC_W_VEC"):
             self.vector_weight = float(os.environ["REC_W_VEC"])
+        if os.environ.get("REC_TFIDF_MAX_BOOKS"):
+            z = os.environ["REC_TFIDF_MAX_BOOKS"].strip()
+            self.tfidf_max_books = 0 if z in ("", "0") else int(z)
 
 
 class RecommendationEngine:
@@ -81,12 +85,30 @@ class RecommendationEngine:
         self._user_cat_matrix: dict[int, dict[int, float]] | None = None
         self._user_category_sets: dict[int, set[int]] | None = None
         self._all_users: dict[int, User] | None = None
+        self._batch_purchases: list[Purchase] | None = None
+        self._batch_similar: list[tuple[User, float]] | None = None
+        self._batch_target_user: User | None = None
+
+    def _begin_recommend_batch(self, user_id: int) -> None:
+        self._batch_purchases = purchases_repo.get_user_purchases(self.db, user_id)
+        self._batch_target_user = users_repo.get_by_id(self.db, user_id)
+        self._batch_similar = (
+            self.find_similar_users(self._batch_target_user)
+            if self._batch_target_user is not None
+            else []
+        )
+
+    def _clear_recommend_batch(self) -> None:
+        self._batch_purchases = None
+        self._batch_similar = None
+        self._batch_target_user = None
 
     def _ensure_indexes(self) -> None:
         if self._cat_weights is None:
             self._cat_weights = category_weight_map(self.db, self.cfg.config_dir)
         if self._tfidf is None:
-            all_books = books_repo.list_all(self.db)
+            cap = self.cfg.tfidf_max_books if self.cfg.tfidf_max_books > 0 else None
+            all_books = books_repo.list_all(self.db, limit=cap)
             if not all_books:
                 self._tfidf = None
             else:
@@ -117,7 +139,11 @@ class RecommendationEngine:
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
-        purchases = purchases_repo.get_user_purchases(self.db, user_id)
+        purchases = (
+            self._batch_purchases
+            if self._batch_purchases is not None
+            else purchases_repo.get_user_purchases(self.db, user_id)
+        )
         if not purchases:
             return 0.0
         score = 0.0
@@ -185,27 +211,31 @@ class RecommendationEngine:
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
-        target = users_repo.get_by_id(self.db, user_id)
+        target = self._batch_target_user if self._batch_target_user is not None else users_repo.get_by_id(self.db, user_id)
         if target is None:
             return 0.0
-        similar = self.find_similar_users(target)
+        similar = self._batch_similar if self._batch_similar is not None else self.find_similar_users(target)
         cand_cat = candidate.category_id
         cw_cand = self.get_category_weight(cand_cat)
+        sim_map = {u.user_id: s for u, s in similar}
+        similar_ids = list(sim_map.keys())
+        if not similar_ids:
+            return 0.0
+        p_list = purchases_repo.purchases_for_book_by_users(self.db, similar_ids, candidate.book_id)
         num = 0.0
         den = 0.0
-        for sim_user, user_sim in similar:
-            p_list = purchases_repo.purchases_for_book_by_user(self.db, sim_user.user_id, candidate.book_id)
-            if not p_list:
+        for p in p_list:
+            user_sim = sim_map.get(p.user_id, 0.0)
+            if user_sim <= 0:
                 continue
-            for p in p_list:
-                pd = p.purchase_date
-                if pd.tzinfo is None:
-                    pd = pd.replace(tzinfo=timezone.utc)
-                tw = sim.time_decay_weight(pd, now, self.cfg.decay_rate)
-                if tw <= 0:
-                    continue
-                num += user_sim * tw
-                den += tw
+            pd = p.purchase_date
+            if pd.tzinfo is None:
+                pd = pd.replace(tzinfo=timezone.utc)
+            tw = sim.time_decay_weight(pd, now, self.cfg.decay_rate)
+            if tw <= 0:
+                continue
+            num += user_sim * tw
+            den += tw
         if den <= 0:
             return 0.0
         return (num / den) * cw_cand
@@ -216,13 +246,18 @@ class RecommendationEngine:
         cand_vec = vs.get_book_embedding(self.db, candidate.book_id)
         if cand_vec is None:
             return 0.0
-        pids = [p.book_id for p in purchases_repo.get_user_purchases(self.db, user_id)]
+        plist = (
+            self._batch_purchases
+            if self._batch_purchases is not None
+            else purchases_repo.get_user_purchases(self.db, user_id)
+        )
+        pids = [p.book_id for p in plist]
         prof = vs.get_user_profile_embedding(self.db, user_id, pids)
         if prof is None:
-            target = users_repo.get_by_id(self.db, user_id)
+            target = self._batch_target_user if self._batch_target_user is not None else users_repo.get_by_id(self.db, user_id)
             if target is None:
                 return 0.0
-            similar = self.find_similar_users(target)
+            similar = self._batch_similar if self._batch_similar is not None else self.find_similar_users(target)
             prof = vs.cold_start_profile_from_similar(self.db, similar, purchases_repo)
         if prof is None:
             return 0.0
@@ -273,20 +308,21 @@ class RecommendationEngine:
                     if books:
                         return books
 
+        out: list[tuple[Book, float]] = []
         self._ensure_indexes()
-        exclude = purchases_repo.user_purchased_book_ids(self.db, user_id)
-        candidates = books_repo.list_ids_excluding(self.db, exclude)
-        if self.cfg.max_candidates and len(candidates) > self.cfg.max_candidates:
-            rng = np.random.default_rng(user_id)
-            idx = rng.choice(len(candidates), size=self.cfg.max_candidates, replace=False)
-            candidates = [candidates[i] for i in sorted(idx)]
+        self._begin_recommend_batch(user_id)
+        try:
+            sample_k = self.cfg.max_candidates if self.cfg.max_candidates > 0 else 500
+            candidates = books_repo.sample_books_not_purchased_by_user(self.db, user_id, sample_k)
 
-        scored: list[tuple[Book, float]] = []
-        for c in candidates:
-            sc = _finite_python_float(self.final_score(user_id, c))
-            scored.append((c, sc))
-        scored.sort(key=lambda x: x[1], reverse=True)
-        out = scored[:limit]
+            scored: list[tuple[Book, float]] = []
+            for c in candidates:
+                sc = _finite_python_float(self.final_score(user_id, c))
+                scored.append((c, sc))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            out = scored[:limit]
+        finally:
+            self._clear_recommend_batch()
 
         if use_cache and self._redis and out:
             payload = {

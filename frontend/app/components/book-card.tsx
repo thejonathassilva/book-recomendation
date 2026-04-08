@@ -29,6 +29,7 @@ function coverHueFromId(bookId: number): number {
 export function BookCard({
   book,
   score,
+  confidence,
   variant = "catalog",
   purchaseToken = null,
   onPurchased,
@@ -36,6 +37,7 @@ export function BookCard({
 }: {
   book: Book;
   score?: number;
+  confidence?: number;
   variant?: "catalog" | "recommendation";
   purchaseToken?: string | null;
   onPurchased?: () => void;
@@ -85,11 +87,18 @@ export function BookCard({
         <span className="book-cover-initial" aria-hidden>
           {initial}
         </span>
-        {score != null && (
-          <span className="score-badge" title="Score do modelo de recomendação">
+        {variant === "recommendation" && confidence != null && Number.isFinite(confidence) ? (
+          <span
+            className="score-badge score-badge--confidence"
+            title={`Confiança relativa nesta lista (não é probabilidade). Score bruto: ${score != null ? score.toFixed(4) : "—"}`}
+          >
+            {Math.round(confidence * 100)}%
+          </span>
+        ) : score != null ? (
+          <span className="score-badge" title="Score do modelo">
             {score.toFixed(3)}
           </span>
-        )}
+        ) : null}
       </div>
       <div className="book-body">
         <h3 className="book-title">{book.title}</h3>

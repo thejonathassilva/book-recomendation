@@ -50,4 +50,9 @@ def test_new_user_recommendations_ok(client, db_session):
     token = login.json()["access_token"]
     rec = client.get("/api/v1/recommendations?limit=5", headers={"Authorization": f"Bearer {token}"})
     assert rec.status_code == 200
-    assert isinstance(rec.json(), list)
+    data = rec.json()
+    assert isinstance(data, list)
+    if data:
+        assert "confidence" in data[0]
+        assert 0.6 <= data[0]["confidence"] <= 1
+        assert all(0.6 <= item["confidence"] <= 1 for item in data)

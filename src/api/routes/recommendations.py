@@ -13,11 +13,15 @@ from src.monitoring.metrics import (
     RECOMMENDATION_LATENCY_MS,
 )
 from src.recommendation.engine import EngineConfig, RecommendationEngine
+from src.recommendation.score_calibration import list_confidence_from_raw
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
+# Confiança calibrada (0–1) relativa ao top-K da resposta; só entregamos itens acima deste corte.
+MIN_RECOMMENDATION_CONFIDENCE = 0.6
 
-def _book_out_from_pair(book, score: float) -> RecommendationItem:
+
+def _book_out_from_pair(book, score: float, confidence: float) -> RecommendationItem:
     cn = book.category.name if book.category else None
     return RecommendationItem(
         book=BookOut(
@@ -31,6 +35,7 @@ def _book_out_from_pair(book, score: float) -> RecommendationItem:
             description=(book.description or "")[:300] or None,
         ),
         score=float(score),
+        confidence=float(confidence),
     )
 
 
@@ -43,9 +48,18 @@ def get_recommendations(
 ) -> list[RecommendationItem]:
     t0 = time.perf_counter()
     engine = RecommendationEngine(db, EngineConfig())
-    pairs = engine.recommend(current_user.user_id, limit=min(limit, 50))
+    # Busca mais candidatos que o `limit` pedido para ainda preencher após filtrar por confiança.
+    fetch_limit = min(50, max(limit * 3, limit))
+    pairs = engine.recommend(current_user.user_id, limit=fetch_limit)
+    raws = [float(s) for _, s in pairs]
+    confs = list_confidence_from_raw(raws)
     ms = (time.perf_counter() - t0) * 1000.0
     RECOMMENDATION_LATENCY_MS.observe(ms)
     MODEL_PREDICTION_COUNT.inc()
     response.headers["X-Recommendation-Latency-Ms"] = f"{ms:.2f}"
-    return [_book_out_from_pair(b, s) for b, s in pairs]
+    ranked = [
+        _book_out_from_pair(b, s, c)
+        for (b, s), c in zip(pairs, confs)
+        if c >= MIN_RECOMMENDATION_CONFIDENCE
+    ]
+    return ranked[: min(limit, 50)]

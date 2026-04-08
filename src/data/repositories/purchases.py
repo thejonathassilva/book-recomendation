@@ -32,6 +32,17 @@ def purchases_for_book_by_user(db: Session, user_id: int, book_id: int) -> list[
     return list(db.execute(stmt).unique().scalars().all())
 
 
+def purchases_for_book_by_users(db: Session, user_ids: list[int], book_id: int) -> list[Purchase]:
+    if not user_ids:
+        return []
+    stmt = (
+        select(Purchase)
+        .options(joinedload(Purchase.book).joinedload(Book.category))
+        .where(Purchase.book_id == book_id, Purchase.user_id.in_(user_ids))
+    )
+    return list(db.execute(stmt).unique().scalars().all())
+
+
 def user_category_counts(db: Session) -> dict[int, dict[int, float]]:
     stmt = (
         select(Purchase.user_id, Book.category_id, func.count().label("c"))
