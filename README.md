@@ -18,12 +18,14 @@ Solução de referência para um marketplace de livros com **recomendações hí
 | 10 | [Frontend](#10-frontend) | Next.js fora do Docker |
 | 11 | [Airflow](#11-airflow) | DAGs |
 | 12 | [Observabilidade](#12-observabilidade) | Métricas, Grafana, apresentação |
-| 13 | [Estrutura do repositório](#13-estrutura-do-repositório) | Pastas principais |
+| 13 | [CI/CD e deploy da API](#13-cicd-e-deploy-da-api) | Imagem GHCR, atualização com menos interrupção |
+| 14 | [Estrutura do repositório](#14-estrutura-do-repositório) | Pastas principais |
 
 ---
 
 ## 1. Visão geral
 
+- **Código**: [github.com/thejonathassilva/book-recomendation](https://github.com/thejonathassilva/book-recomendation) (repositório público de referência).
 - **Problema**: recomendar livros combinando histórico do utilizador, gostos de leitores parecidos (demografia + comportamento) e **similaridade de texto** (embeddings em PostgreSQL com **pgvector**).
 - **Como experimentar rápido**: Docker Compose sobe API, Postgres (com pgvector), Redis, MLflow; opcionalmente interface web e monitorização.
 - **Dados de demo**: script sintético (`seed_data`) que gera utilizadores, livros, compras e avaliações para o motor ter sinal controlável.
@@ -223,8 +225,49 @@ Métricas em `/metrics`: latência de recomendação, contagem de predições, e
 
 ---
 
-## 13. Estrutura do repositório
+## 13. CI/CD e deploy da API
 
-Conforme o case: `src/api`, `src/training`, `src/recommendation`, `src/data`, `src/monitoring`, `dags/`, `config/`, `tests/`, `frontend/`, `docker-compose.yml`, `.github/workflows/ml-pipeline.yml`.
+Repositório de referência: [github.com/thejonathassilva/book-recomendation](https://github.com/thejonathassilva/book-recomendation).
+
+**Pipeline (`ML Pipeline CI/CD`)**: em cada push a `main`, após testes, lint e treino sintético (`--mock`), a imagem da **API** é construída e publicada no **GitHub Container Registry** (GHCR):
+
+- `ghcr.io/thejonathassilva/book-recomendation/bookstore-api:<sha-do-commit>`
+- `ghcr.io/thejonathassilva/book-recomendation/bookstore-api:latest`
+
+(O caminho GHCR usa **sempre** dono e nome do repo em **minúsculas**.)
+
+**Repositório público ≠ imagem pública.** O código no GitHub pode ser público e, mesmo assim, o **pacote** `bookstore-api` no GHCR pode ter nascido como **Private**. Nesse caso `docker pull` falha sem autenticação. Confere em **GitHub → Packages** (pacote associado ao repo) → **Package settings → Change package visibility** e define **Public** se quiseres `pull` anónimo. Se o pacote for **Private**, no servidor faz `docker login ghcr.io` com um **PAT** (scope `read:packages`) antes do `pull`.
+
+**Atualizar só a API no servidor** (sem rebuild local do `Dockerfile`):
+
+1. No host com o repositório e Docker Compose **2.23+** (extensão `!reset` em `docker-compose.image.yml`):
+   ```bash
+   export BOOKSTORE_API_IMAGE=ghcr.io/thejonathassilva/book-recomendation/bookstore-api
+   export BOOKSTORE_API_TAG=latest   # ou o SHA completo do commit publicado pelo CI
+   bash scripts/deploy-api.sh
+   ```
+2. O script faz `pull` da imagem e `up -d --no-deps api` (e `--wait` se o teu Compose suportar), reutilizando Postgres/Redis/MLflow já a correr. A API expõe `/health` e *healthcheck* no Compose para o contentor só receber tráfego quando estiver de pé.
+
+**Deploy remoto opcional**: workflow **Deploy API (SSH)** (`workflow_dispatch`) em `.github/workflows/deploy-vps.yml`. Segredos: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_WORKDIR` (caminho do projeto no servidor), `BOOKSTORE_API_IMAGE` (ex.: `ghcr.io/thejonathassilva/book-recomendation/bookstore-api`). Isto automatiza o mesmo `deploy-api.sh` por SSH.
+
+**Interrupção do serviço**: num único nó, o contentor da API reinicia e pode haver **alguns segundos** sem resposta. **Alta disponibilidade** (troca sem janela perceptível) exige **várias réplicas da API** atrás de um balanceador e política de *rolling update* (Kubernetes, Swarm, etc.) — fora do escopo deste compose de desenvolvimento.
+
+**Treino em produção**: o CI **não** retreina com dados reais; apenas valida o código. Jobs Airflow ou cron no teu ambiente devem correr `train.py` contra a base real e publicar artefactos/métricas; a API pode continuar a servir com a imagem atual até ao próximo `deploy-api.sh`.
+
+### Checklist — configuração no teu ambiente
+
+1. **Primeiro push a `main`** que passe o workflow **ML Pipeline CI/CD** (o job `publish-image` publica no GHCR).
+2. **Nome da imagem**: `ghcr.io/` + repositório GitHub **todo em minúsculas** + `/bookstore-api` (ex.: `ghcr.io/thejonathassilva/book-recomendation/bookstore-api`). Confirma em **GitHub → teu repo → Packages** (ou no log do job `publish-image`).
+3. **Autenticação no GHCR no servidor**: só é obrigatória se o pacote `bookstore-api` for **Private** (ou se o `docker pull` falhar por permissão). Usa `docker login ghcr.io` com um **PAT** (Classic: `read:packages`). Repositório **público** com pacote **público** → normalmente **não** precisas de login para `pull`. O `GITHUB_TOKEN` do Actions trata do *push* da imagem; não precisas de PAT no CI para publicar.
+4. **Servidor (VPS)**: Docker Engine + **Docker Compose v2.23+** (`docker compose version`). Clona o repo para um diretório fixo (ex.: `/opt/bookstore`) — é esse caminho que usarás em `VPS_WORKDIR` se activares o deploy por SSH.
+5. **Primeira subida da stack**: no servidor, com `.env` / variáveis adequadas (`JWT_SECRET` forte, passwords Postgres, etc.), sobe Postgres + Redis + MLflow + API como no README (podes usar só `docker-compose.yml` com `build` na primeira vez, ou já com `docker-compose.image.yml` se exportares `BOOKSTORE_API_IMAGE` / `BOOKSTORE_API_TAG`).
+6. **Atualizações só da API**: `export BOOKSTORE_API_IMAGE=...` e `BOOKSTORE_API_TAG=latest` (ou SHA) e `bash scripts/deploy-api.sh`.
+7. **Deploy por GitHub Actions (opcional)**: **Settings → Secrets and variables → Actions** — cria `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (chave **privada** PEM, linha inteira), `VPS_WORKDIR`, `BOOKSTORE_API_IMAGE`. Depois **Actions → Deploy API (SSH) → Run workflow**.
+
+---
+
+## 14. Estrutura do repositório
+
+Conforme o case: `src/api`, `src/training`, `src/recommendation`, `src/data`, `src/monitoring`, `dags/`, `config/`, `tests/`, `frontend/`, `docker-compose.yml`, `docker-compose.image.yml`, `scripts/deploy-api.sh`, `.github/workflows/ml-pipeline.yml`, `.github/workflows/deploy-vps.yml`.
 
 ---

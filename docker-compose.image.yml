@@ -1,0 +1,16 @@
+# Sobreposição para usar imagem publicada (ex.: GHCR) em vez de build local.
+# Requer Docker Compose 2.23+ (suporte a !reset).
+#
+# Uso:
+#   export BOOKSTORE_API_IMAGE=ghcr.io/dono/repo/bookstore-api
+#   export BOOKSTORE_API_TAG=latest   # ou SHA do commit
+#   docker compose -f docker-compose.yml -f docker-compose.image.yml pull api
+#   docker compose -f docker-compose.yml -f docker-compose.image.yml up -d --no-deps api
+#
+# Ou: bash scripts/deploy-api.sh
+
+services:
+  api:
+    build: !reset
+    image: ${BOOKSTORE_API_IMAGE}:${BOOKSTORE_API_TAG:-latest}
+    pull_policy: always
