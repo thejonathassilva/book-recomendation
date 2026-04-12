@@ -211,7 +211,11 @@ class RecommendationEngine:
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
-        target = self._batch_target_user if self._batch_target_user is not None else users_repo.get_by_id(self.db, user_id)
+        target = (
+            self._batch_target_user
+            if self._batch_target_user is not None
+            else users_repo.get_by_id(self.db, user_id)
+        )
         if target is None:
             return 0.0
         similar = self._batch_similar if self._batch_similar is not None else self.find_similar_users(target)
@@ -254,7 +258,11 @@ class RecommendationEngine:
         pids = [p.book_id for p in plist]
         prof = vs.get_user_profile_embedding(self.db, user_id, pids)
         if prof is None:
-            target = self._batch_target_user if self._batch_target_user is not None else users_repo.get_by_id(self.db, user_id)
+            target = (
+                self._batch_target_user
+                if self._batch_target_user is not None
+                else users_repo.get_by_id(self.db, user_id)
+            )
             if target is None:
                 return 0.0
             similar = self._batch_similar if self._batch_similar is not None else self.find_similar_users(target)
