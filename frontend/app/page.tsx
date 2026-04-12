@@ -5,7 +5,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BookCard } from "./components/book-card";
 import { RecommendationCarousel } from "./components/recommendation-carousel";
 import { SiteHeader } from "./components/header";
-import { API_BASE, EMAIL_KEY, TOKEN_KEY } from "./lib/api-config";
+import {
+  API_BASE,
+  clearBookstoreSession,
+  EMAIL_KEY,
+  IS_ADMIN_KEY,
+  persistBookstoreSession,
+  readIsAdminFromStorage,
+  TOKEN_KEY,
+} from "./lib/api-config";
 
 type Book = {
   book_id: number;
@@ -49,6 +57,7 @@ export default function Home() {
   const [recsLoadFailed, setRecsLoadFailed] = useState(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const [recsReady, setRecsReady] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     try {
@@ -56,15 +65,17 @@ export default function Home() {
       const e = localStorage.getItem(EMAIL_KEY);
       if (t) setToken(t);
       if (e) setSessionEmail(e);
+      setIsAdmin(readIsAdminFromStorage());
     } catch {}
   }, []);
 
   useEffect(() => {
     const onStorage = (ev: StorageEvent) => {
-      if (ev.key !== TOKEN_KEY && ev.key !== EMAIL_KEY) return;
+      if (ev.key !== TOKEN_KEY && ev.key !== EMAIL_KEY && ev.key !== IS_ADMIN_KEY) return;
       try {
         setToken(localStorage.getItem(TOKEN_KEY));
         setSessionEmail(localStorage.getItem(EMAIL_KEY));
+        setIsAdmin(readIsAdminFromStorage());
       } catch {}
     };
     window.addEventListener("storage", onStorage);
@@ -75,10 +86,8 @@ export default function Home() {
     setToken(null);
     setSessionEmail(null);
     setRecs([]);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(EMAIL_KEY);
-    } catch {}
+    setIsAdmin(false);
+    clearBookstoreSession();
   };
 
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -188,9 +197,34 @@ export default function Home() {
     }
   }, [showAlert]);
 
+  useEffect(() => {
+    if (!token) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok || cancelled) return;
+        const u = (await r.json()) as { email: string; is_admin?: boolean };
+        if (cancelled) return;
+        setIsAdmin(Boolean(u.is_admin));
+        persistBookstoreSession(token, u.email, Boolean(u.is_admin));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   return (
     <div className="app-shell">
-      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} />
+      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} isAdmin={isAdmin} />
 
       <section className="hero" aria-labelledby="hero-heading">
         <span className="hero-badge">

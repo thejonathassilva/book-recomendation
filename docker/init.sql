@@ -10,8 +10,12 @@ CREATE TABLE IF NOT EXISTS users (
     birth_date    DATE NOT NULL,
     gender        VARCHAR(20) NOT NULL,
     region        VARCHAR(100) NOT NULL,
+    is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMP DEFAULT NOW()
 );
+
+-- Bases já inicializadas antes desta coluna (idempotente)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS categories (
     category_id   SERIAL PRIMARY KEY,

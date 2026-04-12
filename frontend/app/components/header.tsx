@@ -5,9 +5,11 @@ import Link from "next/link";
 export function SiteHeader({
   userEmail,
   onLogout,
+  isAdmin = false,
 }: {
   userEmail: string | null;
   onLogout: () => void;
+  isAdmin?: boolean;
 }) {
   return (
     <header className="site-header">
@@ -34,6 +36,16 @@ export function SiteHeader({
             <Link href="/compras" className="header-quiet-link" prefetch>
               Compras
             </Link>
+            {isAdmin ? (
+              <>
+                <span className="header-auth-sep" aria-hidden>
+                  ·
+                </span>
+                <Link href="/admin" className="header-quiet-link header-admin-link" prefetch>
+                  Painel admin
+                </Link>
+              </>
+            ) : null}
             <span className="header-auth-sep" aria-hidden>
               ·
             </span>

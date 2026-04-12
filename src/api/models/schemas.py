@@ -30,6 +30,7 @@ class UserOut(BaseModel):
     birth_date: date
     gender: str
     region: str
+    is_admin: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -42,6 +43,7 @@ class LoginBody(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    is_admin: bool = False
 
 
 class BookOut(BaseModel):
@@ -103,3 +105,41 @@ class PurchaseListItem(BaseModel):
     quantity: int
     book_title: str | None = None
     book_author: str | None = None
+
+
+class AdminPurchaseRow(BaseModel):
+    purchase_id: int
+    user_id: int
+    user_email: str
+    book_id: int
+    book_title: str | None
+    purchase_date: datetime
+    price_paid: Decimal | None
+    quantity: int
+
+
+class AdminPurchasePage(BaseModel):
+    items: list[AdminPurchaseRow]
+    total: int
+    limit: int
+    offset: int
+
+
+class BookCreateAdmin(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    author: str | None = Field(None, max_length=300)
+    isbn: str | None = Field(None, max_length=20)
+    category_id: int | None = None
+    price: Decimal | None = Field(None, ge=0)
+    description: str | None = None
+    cover_url: str | None = Field(None, max_length=500)
+
+
+class BookUpdateAdmin(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=500)
+    author: str | None = Field(None, max_length=300)
+    isbn: str | None = Field(None, max_length=20)
+    category_id: int | None = None
+    price: Decimal | None = Field(None, ge=0)
+    description: str | None = None
+    cover_url: str | None = Field(None, max_length=500)

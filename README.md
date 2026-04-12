@@ -39,7 +39,7 @@ Siga nesta ordem até conseguir abrir a API e o catálogo com dados.
 3. **Popular a base de dados** com o seed sintético: `docker compose exec api python -m src.data.seed_data`  
    (opcional mais leve: `seed_data --users 500 --books 300 --purchases 8000`.)
 4. **(Opcional)** **Embeddings** para o ramo semântico: `docker compose exec api python -m src.data.sync_book_embeddings` (demora; exige PyTorch no contentor).
-5. **Abrir no browser**: API em [http://localhost:8000](http://localhost:8000), documentação em [/docs](http://localhost:8000/docs). Com perfil `ui`: [http://localhost:3001](http://localhost:3001). Login de demo após seed: **demo@bookstore.com** / **demo123**.
+5. **Abrir no browser**: API em [http://localhost:8000](http://localhost:8000), documentação em [/docs](http://localhost:8000/docs). Com perfil `ui`: [http://localhost:3001](http://localhost:3001). Após o seed: utilizador demo **demo@bookstore.com** / **demo123**; **administrador da loja** (painel de compras e livros na UI) **admin@bookstore.com** / **admin123**. **Painel admin**: [http://localhost:3001/admin](http://localhost:3001/admin) — requer login com conta `is_admin`. **Token estático da API** (ex.: `PATCH` de peso por categoria sem JWT): `ADMIN_TOKEN` + header `X-Admin-Token`; ver [Variáveis de ambiente](#5-variáveis-de-ambiente).
 6. **(Opcional)** Afinar o motor com variáveis `REC_W_*` (ver [secção 3](#3-docker-subir-e-popular-dados) e [secção 5](#5-variáveis-de-ambiente)).
 
 ---
@@ -105,6 +105,7 @@ Com **embeddings** preenchidos, podes subir o peso de **vizinhos** (`REC_W_SIM`)
 | Swagger | http://localhost:8000/docs |
 | MLflow | http://localhost:5000 |
 | UI (perfil `ui`) | http://localhost:3001 · cadastro em `/cadastro` |
+| Painel admin (UI, JWT `is_admin`) | http://localhost:3001/admin — compras globais, CRUD de livros, atalhos MLflow |
 | Prometheus (perfil `monitoring`) | http://localhost:9090 |
 | Grafana (perfil `monitoring`) | http://localhost:3000 (admin/admin) |
 
@@ -131,7 +132,8 @@ Copie `.env.example` para `.env`. **Ao mudar stack, env ou comportamento do moto
 **Base**: `DATABASE_URL`, `REDIS_URL`, `MLFLOW_TRACKING_URI`, `JWT_SECRET`, `CONFIG_DIR`. Em desenvolvimento local sem Redis, deixa `REDIS_URL` vazio para desativar cache.
 
 - **Treino sem servidor MLflow**: `MLFLOW_TRACKING_URI=file:./mlruns` (padrão no `train.py` se não definido).
-- **Admin**: `ADMIN_TOKEN` — `PATCH /api/v1/catalog/categories/{id}/weight` e outras rotas admin com header `X-Admin-Token`.
+- **Admin JWT**: utilizadores com `is_admin=true` na tabela `users` (seed: `admin@bookstore.com`) acedem a `GET /api/v1/admin/purchases`, `POST/PATCH /api/v1/admin/books`, e ao painel `/admin` na UI.
+- **Admin token HTTP**: `ADMIN_TOKEN` — `PATCH /api/v1/catalog/categories/{id}/weight` com header `X-Admin-Token` (automação sem JWT).
 - **Perfil para recomendações**: no cadastro (`POST /api/v1/auth/register`) informa `birth_date`, `gender` (M/F/Outro) e `region` (ex.: UF). Depois do login, `GET/PATCH /api/v1/users/me` ajusta nome e demografia usados na similaridade entre leitores; o **histórico de compras** vem das linhas em `purchases` (seed ou integração futura de checkout).
 - **Pesos do motor (API)**: `REC_W_OWN`, `REC_W_SIM`, `REC_W_VEC` (padrão 0,50 / 0,35 / 0,15) — fusão histórico + colaborativo + vetor pgvector.
 - **Cache de recomendações (Redis)**: `REC_CACHE_TTL` em segundos (padrão `3600`).

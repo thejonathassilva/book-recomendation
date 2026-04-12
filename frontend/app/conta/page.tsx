@@ -4,7 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteHeader } from "../components/header";
-import { API_BASE, EMAIL_KEY, TOKEN_KEY } from "../lib/api-config";
+import {
+  API_BASE,
+  clearBookstoreSession,
+  EMAIL_KEY,
+  persistBookstoreSession,
+  readIsAdminFromStorage,
+  TOKEN_KEY,
+} from "../lib/api-config";
 import { BRAZIL_UFS } from "../lib/regions";
 
 type Gender = "M" | "F" | "Outro";
@@ -16,6 +23,7 @@ type UserMe = {
   birth_date: string;
   gender: string;
   region: string;
+  is_admin?: boolean;
 };
 
 export default function ContaPage() {
@@ -32,6 +40,7 @@ export default function ContaPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [alert, setAlert] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [loadingLogin, setLoadingLogin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showAlert = useCallback((type: "error" | "success", text: string) => {
@@ -46,25 +55,22 @@ export default function ContaPage() {
       const e = localStorage.getItem(EMAIL_KEY);
       if (t) setToken(t);
       if (e) setSessionEmail(e);
+      setIsAdmin(readIsAdminFromStorage());
     } catch {}
   }, []);
 
-  const persistSession = (t: string, mail: string) => {
+  const persistSession = (t: string, mail: string, admin: boolean) => {
     setToken(t);
     setSessionEmail(mail);
-    try {
-      localStorage.setItem(TOKEN_KEY, t);
-      localStorage.setItem(EMAIL_KEY, mail);
-    } catch {}
+    setIsAdmin(admin);
+    persistBookstoreSession(t, mail, admin);
   };
 
   const clearSession = () => {
     setToken(null);
     setSessionEmail(null);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(EMAIL_KEY);
-    } catch {}
+    setIsAdmin(false);
+    clearBookstoreSession();
   };
 
   const fetchProfile = useCallback(async () => {
@@ -80,6 +86,8 @@ export default function ContaPage() {
       setProfileBirth(u.birth_date);
       setProfileGender(u.gender as Gender);
       setProfileRegion(u.region);
+      setIsAdmin(Boolean(u.is_admin));
+      persistBookstoreSession(token, u.email, Boolean(u.is_admin));
     } catch {
       showAlert("error", "Não foi possível carregar seu perfil.");
     } finally {
@@ -102,7 +110,7 @@ export default function ContaPage() {
       });
       if (!r.ok) throw new Error();
       const data = await r.json();
-      persistSession(data.access_token, email);
+      persistSession(data.access_token, email, Boolean(data.is_admin));
       router.push("/");
     } catch {
       showAlert("error", "E-mail ou senha incorretos. Use a conta demo após o seed.");
@@ -139,7 +147,7 @@ export default function ContaPage() {
 
   return (
     <div className="app-shell">
-      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} />
+      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} isAdmin={isAdmin} />
 
       <div className="conta-inner">
         <Link href="/" className="conta-back">

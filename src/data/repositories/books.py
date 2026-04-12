@@ -3,12 +3,53 @@ from decimal import Decimal
 from sqlalchemy import asc, desc, func, select
 from sqlalchemy.orm import Session, joinedload
 
-from src.data.models import Book, Purchase
+from src.data.models import Book, Category, Purchase
 
 
 def _escape_like_fragment(s: str, max_len: int = 200) -> str:
     t = (s or "").strip()[:max_len]
     return t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def create(
+    db: Session,
+    *,
+    title: str,
+    author: str | None,
+    isbn: str | None,
+    category_id: int | None,
+    price: Decimal | None,
+    description: str | None,
+    cover_url: str | None,
+) -> Book:
+    b = Book(
+        title=title,
+        author=author,
+        isbn=isbn,
+        category_id=category_id,
+        price=price,
+        description=description,
+        cover_url=cover_url,
+    )
+    db.add(b)
+    db.commit()
+    db.refresh(b)
+    return b
+
+
+def update_fields(db: Session, book_id: int, fields: dict) -> Book | None:
+    b = get_by_id(db, book_id)
+    if not b:
+        return None
+    for key, value in fields.items():
+        setattr(b, key, value)
+    db.commit()
+    db.refresh(b)
+    return b
+
+
+def category_exists(db: Session, category_id: int) -> bool:
+    return db.get(Category, category_id) is not None
 
 
 def get_by_id(db: Session, book_id: int) -> Book | None:

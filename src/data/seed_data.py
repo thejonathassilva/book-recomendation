@@ -68,6 +68,18 @@ def seed_users(session: Session, n: int) -> list[User]:
     regions = ["SP", "RJ", "MG", "RS", "PR", "BA", "PE", "CE", "DF", "AM"]
     genders = ["M", "F", "Outro"]
     users: list[User] = []
+    admin = User(
+        name="Administrador",
+        email="admin@bookstore.com",
+        password_hash=hash_password("admin123"),
+        birth_date=date(1985, 1, 1),
+        gender="Outro",
+        region="DF",
+        is_admin=True,
+    )
+    users.append(admin)
+    session.add(admin)
+    session.flush()
     demo = User(
         name="Usuário Demo",
         email="demo@bookstore.com",
@@ -75,11 +87,13 @@ def seed_users(session: Session, n: int) -> list[User]:
         birth_date=date(1990, 6, 15),
         gender="F",
         region="SP",
+        is_admin=False,
     )
     users.append(demo)
     session.add(demo)
     session.flush()
-    for i in range(max(0, n - 1)):
+    synthetic: list[User] = []
+    for i in range(max(0, n - 2)):
         birth = fake.date_of_birth(minimum_age=16, maximum_age=75)
         u = User(
             name=fake.name(),
@@ -88,9 +102,11 @@ def seed_users(session: Session, n: int) -> list[User]:
             birth_date=birth,
             gender=np.random.choice(genders, p=[0.48, 0.48, 0.04]),
             region=np.random.choice(regions),
+            is_admin=False,
         )
+        synthetic.append(u)
         users.append(u)
-    session.add_all(users)
+    session.add_all(synthetic)
     session.commit()
     for u in users:
         session.refresh(u)

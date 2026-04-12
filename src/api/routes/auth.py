@@ -33,5 +33,5 @@ def login(body: LoginBody, db: Session = Depends(get_db)) -> Token:
     user = users_repo.get_by_email(db, body.email)
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    token = create_access_token(sub=user.email, user_id=user.user_id)
-    return Token(access_token=token)
+    token = create_access_token(sub=user.email, user_id=user.user_id, is_admin=user.is_admin)
+    return Token(access_token=token, is_admin=user.is_admin)

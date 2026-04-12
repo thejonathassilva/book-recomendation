@@ -8,6 +8,19 @@ from sqlalchemy.orm import Session, joinedload
 from src.data.models import Book, Purchase, User
 
 
+def list_all_admin(db: Session, *, limit: int, offset: int) -> tuple[list[Purchase], int]:
+    total = int(db.execute(select(func.count()).select_from(Purchase)).scalar_one() or 0)
+    stmt = (
+        select(Purchase)
+        .options(joinedload(Purchase.user), joinedload(Purchase.book))
+        .order_by(Purchase.purchase_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = list(db.execute(stmt).unique().scalars().all())
+    return rows, total
+
+
 def get_user_purchases(db: Session, user_id: int) -> list[Purchase]:
     stmt = (
         select(Purchase)

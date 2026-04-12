@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.handlers import register_exception_handlers
-from src.api.routes import auth, catalog, purchases, recommendations, users
+from src.api.routes import admin_console, auth, catalog, purchases, recommendations, users
 from src.monitoring.metrics import API_ERROR_COUNT, metrics_response
 
 app = FastAPI(title="Bookstore ML API", version="1.0.0")
@@ -21,6 +21,7 @@ app.include_router(catalog.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(purchases.router, prefix="/api/v1")
+app.include_router(admin_console.router, prefix="/api/v1")
 
 
 @app.get("/health")

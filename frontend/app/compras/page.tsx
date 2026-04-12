@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SiteHeader } from "../components/header";
-import { API_BASE, EMAIL_KEY, TOKEN_KEY } from "../lib/api-config";
+import {
+  API_BASE,
+  clearBookstoreSession,
+  EMAIL_KEY,
+  persistBookstoreSession,
+  readIsAdminFromStorage,
+  TOKEN_KEY,
+} from "../lib/api-config";
 import { messageFromApiError } from "../lib/api-errors";
 
 type PurchaseRow = {
@@ -31,6 +38,7 @@ export default function ComprasPage() {
   const [rows, setRows] = useState<PurchaseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     try {
@@ -38,6 +46,7 @@ export default function ComprasPage() {
       const e = localStorage.getItem(EMAIL_KEY);
       if (t) setToken(t);
       if (e) setSessionEmail(e);
+      setIsAdmin(readIsAdminFromStorage());
     } catch {}
   }, []);
 
@@ -45,10 +54,8 @@ export default function ComprasPage() {
     setToken(null);
     setSessionEmail(null);
     setRows([]);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(EMAIL_KEY);
-    } catch {}
+    setIsAdmin(false);
+    clearBookstoreSession();
   };
 
   const loadPurchases = useCallback(async () => {
@@ -76,11 +83,36 @@ export default function ComprasPage() {
     else setRows([]);
   }, [token, loadPurchases]);
 
+  useEffect(() => {
+    if (!token) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok || cancelled) return;
+        const u = (await r.json()) as { email: string; is_admin?: boolean };
+        if (cancelled) return;
+        setIsAdmin(Boolean(u.is_admin));
+        persistBookstoreSession(token, u.email, Boolean(u.is_admin));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
 
   return (
     <div className="app-shell">
-      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} />
+      <SiteHeader userEmail={sessionEmail} onLogout={clearSession} isAdmin={isAdmin} />
 
       <div className="conta-inner conta-inner--wide">
         <Link href="/" className="conta-back">

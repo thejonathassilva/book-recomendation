@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { messageFromApiError } from "../lib/api-errors";
-import { API_BASE, EMAIL_KEY, TOKEN_KEY } from "../lib/api-config";
+import { API_BASE, persistBookstoreSession } from "../lib/api-config";
 import { BRAZIL_UFS } from "../lib/regions";
 
 type Gender = "M" | "F" | "Outro";
@@ -63,10 +63,7 @@ export default function CadastroPage() {
       });
       if (!loginRes.ok) throw new Error("Conta criada, mas o login automático falhou. Entre manualmente na página inicial.");
       const data = await loginRes.json();
-      try {
-        localStorage.setItem(TOKEN_KEY, data.access_token);
-        localStorage.setItem(EMAIL_KEY, email.trim());
-      } catch {}
+      persistBookstoreSession(data.access_token, email.trim(), Boolean(data.is_admin));
       router.push("/?conta=criada");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao cadastrar.");
