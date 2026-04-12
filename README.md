@@ -83,7 +83,7 @@ Copie `.env.example` para `.env`. O exemplo lista variáveis base e blocos comen
 
 ## Testes
 
-Suíte em `tests/` com **pytest** e **pytest-cov**. O projeto exige cobertura **mínima de 80%** em `src/` (ver `[tool.pytest.ini_options]` e `[tool.coverage.*]` no `pyproject.toml`). Os scripts de entrada (`seed_data`, `sync_book_embeddings`, `train`, `register`) estão **omitidos** do cálculo de cobertura (foco em módulos importáveis e testáveis).
+Suíte em `tests/` com **pytest** e **pytest-cov**. A cobertura **mínima de 80%** em `src/` é verificada no **CI** (`pytest … --cov-fail-under=80` na suíte completa). Localmente o `pyproject.toml` só liga o relatório de cobertura; para repetir o gate antes do push, use `pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=80`. Os scripts de entrada (`seed_data`, `sync_book_embeddings`, `train`, `register`) estão **omitidos** do cálculo de cobertura (foco em módulos importáveis e testáveis).
 
 ```powershell
 pytest tests/ -v
