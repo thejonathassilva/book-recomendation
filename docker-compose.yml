@@ -10,8 +10,16 @@
 #   docker compose exec api python -m src.data.seed_data
 #   docker compose exec api python -m src.data.sync_book_embeddings
 #
+# Zerar volumes (Postgres, etc.) e subir de novo:
+#   docker compose down -v --remove-orphans
+#   docker compose up -d --build
+#   docker compose exec api python -m src.data.seed_data
+#
 # Stack opcional (Prometheus + Grafana):
 #   docker compose --profile monitoring up -d
+#
+# UI + monitoring de uma vez:
+#   docker compose --profile ui --profile monitoring up -d --build
 #
 # Login após seed: demo@bookstore.com / demo123
 # - API + docs: http://localhost:8000
@@ -66,6 +74,10 @@ services:
       JWT_SECRET: change-me-in-production-use-long-secret
       CONFIG_DIR: /app/config
       TRAIN_METRICS_EXPORT_PATH: /app/data/train_metrics_last.json
+      # Opcional: motor mais “assertivo” (mais colaborativo + vetor; útil com embeddings preenchidos)
+      # REC_W_OWN: "0.30"
+      # REC_W_SIM: "0.45"
+      # REC_W_VEC: "0.25"
     ports:
       - "8000:8000"
     volumes:

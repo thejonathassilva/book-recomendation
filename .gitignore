@@ -10,6 +10,7 @@ htmlcov/
 *.db
 mlruns/
 data/train_metrics_last.json
+data/livros_enrich_cache.json
 frontend/node_modules/
 frontend/.next/
 venv/
