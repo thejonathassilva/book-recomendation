@@ -364,6 +364,4 @@ Ao concluir este case, **priorizei** que qualquer pessoa conseguisse **reproduzi
 
 As escolhas que mais me custaram a equilibrar foram **tempo** versus **realismo** (ETL completo, HA, métricas online de clique): deixei isso explícito nas limitações porque prefiro **assumir o recorte** a prometer um pipeline fechado que não está implementado. O que mais valorizo no que entreguei é a **explicabilidade** do ranking (pesos, perfil, vizinhos) e o facto de o stack já incluir **testes**, **observabilidade** e **CI/CD** como parte do aprendizado, não como extra opcional.
 
-Para apresentar métricas e frases prontas ao júri, continuo a usar o roteiro em [`docs/apresentacao-metricas.md`](docs/apresentacao-metricas.md).
-
 ---
