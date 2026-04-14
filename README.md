@@ -20,6 +20,7 @@ Solução de referência para um marketplace de livros com **recomendações hí
 | 12 | [Observabilidade](#12-observabilidade) | Métricas, Grafana, apresentação |
 | 13 | [CI/CD e deploy da API](#13-cicd-e-deploy-da-api) | Imagem GHCR, atualização com menos interrupção |
 | 14 | [Estrutura do repositório](#14-estrutura-do-repositório) | Pastas principais |
+| 15 | [Documentação do case (entrega)](#15-documentação-do-case-entrega) | Objetivo, solução, técnica, plano, melhorias, conclusão |
 
 ---
 
@@ -269,5 +270,100 @@ Repositório de referência: [github.com/thejonathassilva/book-recomendation](ht
 ## 14. Estrutura do repositório
 
 Conforme o case: `src/api`, `src/training`, `src/recommendation`, `src/data`, `src/monitoring`, `dags/`, `config/`, `tests/`, `frontend/`, `docker-compose.yml`, `docker-compose.image.yml`, `scripts/deploy-api.sh`, `.github/workflows/ml-pipeline.yml`, `.github/workflows/deploy-vps.yml`.
+
+---
+
+## 15. Documentação do case (entrega)
+
+Secção para **apresentação do case**: objetivo, visão de solução, visão técnica, como o trabalho foi encadeado, limitações honestas e fecho. O restante README continua a ser o **manual operacional** (Docker, testes, CI/CD).
+
+### Objetivo e âmbito
+
+- **Objetivo**: demonstrar um **marketplace de livros** com **recomendações híbridas** — histórico de compras, utilizadores semelhantes (demografia + comportamento) e, opcionalmente, **similaridade semântica** (embeddings + **pgvector**), com **pesos configuráveis** por tipo de sinal e por categoria.
+- **Fora de âmbito** (explícito): recomendações em tempo real a escala de grandes retalhistas; **alta disponibilidade** multi-réplica; **pagamentos** reais; **modelo único** servido a partir do MLflow Model Registry; ETL de vendas de produção completo (existe DAG **placeholder**).
+- **Critérios de sucesso do case**: stack **reproduzível** (Compose); **API** e **UI** demonstráveis; **motor** explicável; **treino offline** comparando algoritmos com métricas de ranking; **observabilidade** (métricas operacionais + eco das métricas de treino); **CI/CD** publicando imagem da API.
+
+### Arquitetura de solução (negócio)
+
+| Actor | Ação principal |
+|--------|----------------|
+| **Visitante / leitor** | Explora catálogo, regista-se, actualiza perfil (demografia), compra livros (simulado na API). |
+| **Sistema de recomendação** | Calcula ranking personalizado por utilizador com base em histórico, vizinhos e vetores de texto. |
+| **Administrador da loja** | Consulta compras globais, gere livros (API/UI), opcionalmente ajusta pesos de categoria (`ADMIN_TOKEN`). |
+| **Equipa de ML / dados** | Corre seeds, treino, avaliação; consulta MLflow e dashboards Grafana (perfil monitoring). |
+
+Fluxo resumido: **dados** (utilizadores, livros, compras) na **PostgreSQL** alimentam o **motor em runtime**; o **treino** lê os mesmos dados para **experimentos offline** e exporta métricas; **CI** valida código e publica a **imagem da API**.
+
+### Arquitetura técnica (visão global)
+
+Complementa a [secção 4](#4-arquitetura-resumo) (lista de componentes). Aqui: **fluxo de dados** e **fronteiras**.
+
+```mermaid
+flowchart LR
+  subgraph clients [Clientes]
+    UI[Next.js UI]
+    DOC[Swagger / integrações]
+  end
+  subgraph api [API FastAPI]
+    R[/recommendations/]
+    C[/catalog/ auth/ purchases/]
+  end
+  subgraph engine [Motor online]
+    E[RecommendationEngine]
+  end
+  subgraph data [Persistência]
+    PG[(PostgreSQL + pgvector)]
+    RD[(Redis cache)]
+  end
+  subgraph ml [ML e orquestração]
+    TR[train.py avaliação offline]
+    MLF[MLflow]
+    DAG[DAGs Airflow opcional]
+  end
+  UI --> R
+  UI --> C
+  DOC --> C
+  R --> E
+  E --> PG
+  E --> RD
+  C --> PG
+  TR --> PG
+  TR --> MLF
+  DAG --> TR
+```
+
+- **Fronteira importante**: o **motor que responde em `/recommendations`** é o **`RecommendationEngine`** (código + dados na BD). O **MLflow** regista **runs de experimentos** (vários algoritmos, métricas offline); **não** há hoje promoção automática de um artefacto de treino para substituir esse motor.
+
+### Plano de implementação (como o case foi encadeado)
+
+Ordem lógica seguida no desenvolvimento (espelhada na estrutura do repo):
+
+1. **Dados e persistência** — schema PostgreSQL (`docker/init.sql`), modelos SQLAlchemy, repositórios, **seed** sintético.
+2. **Motor de recomendação** — fusão histórico / colaborativo / vetorial, pesos e cache Redis.
+3. **API REST** — catálogo, auth, compras, recomendações, erros JSON consistentes.
+4. **Treino e avaliação offline** — `train.py`, algoritmos comparáveis, MLflow, export `train_metrics_last.json`.
+5. **Observabilidade** — Prometheus (`/metrics`), Grafana provisionado, métricas offline expostas via ficheiro.
+6. **Frontend** — vitrine, conta, compras, painel admin.
+7. **Orquestração (esboço)** — DAGs Airflow (ETL placeholder, treino, avaliação, warm cache).
+8. **Qualidade e CI/CD** — pytest + cobertura, Ruff, pipeline GitHub Actions, imagem no GHCR, script de deploy da API.
+
+### Limitações e melhorias futuras
+
+| Área | Limitação actual | Melhoria típica |
+|------|------------------|-----------------|
+| **ETL** | `dag_etl_vendas` só valida conexão | Agregações, *feature store*, ingestão de ficheiros |
+| **Treino ↔ produção** | Modelos do `train.py` não são servidos como artefacto único | `log_model`, registry, variável `MODEL_VERSION` na API |
+| **Métricas online** | *Gauges* para CTR/drift sem job completo | Eventos *impression/click*, pipelines batch |
+| **Orquestração** | DAGs independentes | Grafo único: dados → treino → avaliação → deploy |
+| **Deploy** | Um contentor API, janela curta de restart | Réplicas + balanceador, *rolling update* |
+| **Versionamento de dados** | Estado da BD no momento do treino | *Snapshots*, *data contracts*, linhagem |
+
+### Considerações finais
+
+Ao concluir este case, **priorizei** que qualquer pessoa conseguisse **reproduzir** o ambiente com Docker, repetir o seed e ver recomendações de ponta a ponta sem depender de infraestrutura fechada. Para mim, faz sentido manter o **motor de recomendação** (histórico, vizinhos e, quando há dados, vetores) **separado** dos experimentos no MLflow: assim ficou claro o que é **serviço em produção** e o que é **laboratório de comparação de algoritmos** — mesmo sabendo que, num cenário empresarial, eu ligaria depois artefactos de treino ao que corre na API.
+
+As escolhas que mais me custaram a equilibrar foram **tempo** versus **realismo** (ETL completo, HA, métricas online de clique): deixei isso explícito nas limitações porque prefiro **assumir o recorte** a prometer um pipeline fechado que não está implementado. O que mais valorizo no que entreguei é a **explicabilidade** do ranking (pesos, perfil, vizinhos) e o facto de o stack já incluir **testes**, **observabilidade** e **CI/CD** como parte do aprendizado, não como extra opcional.
+
+Para apresentar métricas e frases prontas ao júri, continuo a usar o roteiro em [`docs/apresentacao-metricas.md`](docs/apresentacao-metricas.md).
 
 ---
