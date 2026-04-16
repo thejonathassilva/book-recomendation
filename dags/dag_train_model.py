@@ -1,5 +1,5 @@
 """
-DAG semanal: treina múltiplos algoritmos e registra métricas no MLflow.
+DAG horária: treina todos os algoritmos comparáveis e registra métricas no MLflow (um run por algoritmo).
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ def run_train() -> None:
 with DAG(
     dag_id="dag_train_model",
     default_args=default_args,
-    description="Treina modelos comparáveis e envia runs ao MLflow",
-    schedule_interval="@weekly",
+    description="Treina todos os modelos comparáveis e envia runs ao MLflow (a cada hora)",
+    schedule_interval="@hourly",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["ml", "training"],

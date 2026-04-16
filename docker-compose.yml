@@ -18,6 +18,9 @@
 # Stack opcional (Prometheus + Grafana):
 #   docker compose --profile monitoring up -d
 #
+# Treino offline a cada hora (MLflow + JSON em ./data; requer seed no Postgres):
+#   docker compose --profile hourly-train up -d
+#
 # UI + monitoring de uma vez:
 #   docker compose --profile ui --profile monitoring up -d --build
 #
@@ -74,6 +77,8 @@ services:
       JWT_SECRET: change-me-in-production-use-long-secret
       CONFIG_DIR: /app/config
       TRAIN_METRICS_EXPORT_PATH: /app/data/train_metrics_last.json
+      # Esqueleto: liga o hook MLflow online (ainda usa RecommendationEngine até implementar inferência)
+      # USE_MLFLOW_ONLINE_RANKER: "true"
       # Opcional: motor mais “assertivo” (mais colaborativo + vetor; útil com embeddings preenchidos)
       # REC_W_OWN: "0.30"
       # REC_W_SIM: "0.45"
@@ -96,6 +101,31 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  # Roda `python -m src.training.train` em loop; intervalo = TRAIN_INTERVAL_SECONDS (padrão 3600).
+  # Valor vem do `.env` na raiz do projeto ou do ambiente do shell na hora do `docker compose up` (interpolação ${TRAIN_INTERVAL_SECONDS:-3600}).
+  # Perfil opcional: não sobe com `docker compose up` simples — use --profile hourly-train
+  train_scheduler:
+    profiles: ["hourly-train"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bookstore:bookstore@postgres:5432/bookstore
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      CONFIG_DIR: /app/config
+      TRAIN_METRICS_EXPORT_PATH: /app/data/train_metrics_last.json
+      TRAIN_INTERVAL_SECONDS: "${TRAIN_INTERVAL_SECONDS:-3600}"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    restart: unless-stopped
+    command: ["bash", "/app/scripts/train-batch-loop.sh"]
 
   frontend:
     profiles: ["ui"]

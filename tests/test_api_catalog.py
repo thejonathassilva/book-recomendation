@@ -6,7 +6,20 @@ from src.api.settings import get_settings
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["recommendation_ranker"]["backend"] == "heuristic"
+    assert body["recommendation_ranker"]["mlflow_online_ranker"] == "off"
+
+
+def test_health_mlflow_stub_flag(client, monkeypatch):
+    monkeypatch.setenv("USE_MLFLOW_ONLINE_RANKER", "true")
+    r = client.get("/health")
+    assert r.status_code == 200
+    j = r.json()
+    assert j["recommendation_ranker"]["backend"] == "heuristic"
+    assert j["recommendation_ranker"]["mlflow_online_ranker"] == "stub"
+    assert "next_step" in j["recommendation_ranker"]
 
 
 def test_catalog_book_by_id_and_404(client, db_session):

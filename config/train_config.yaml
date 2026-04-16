@@ -14,6 +14,8 @@ training:
     - matrix_svd
     - hybrid_xgboost
     - neural_mlp
+  # Limite de usuários na matriz user×livro para XGBoost/MLP (None = todos; pode ficar pesado com catálogo grande).
+  interaction_sample_max_users: 2000
 
 evaluation:
   k_list: [5, 10]
