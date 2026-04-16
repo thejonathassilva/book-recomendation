@@ -13,6 +13,10 @@ from src.monitoring.metrics import (
     RECOMMENDATION_LATENCY_MS,
 )
 from src.recommendation.engine import EngineConfig, RecommendationEngine
+from src.recommendation.online_ranker_gateway import (
+    mlflow_online_ranker_enabled,
+    try_mlflow_online_recommendations,
+)
 from src.recommendation.score_calibration import list_confidence_from_raw
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
@@ -50,7 +54,11 @@ def get_recommendations(
     engine = RecommendationEngine(db, EngineConfig())
     # Busca mais candidatos que o `limit` pedido para ainda preencher após filtrar por confiança.
     fetch_limit = min(50, max(limit * 3, limit))
-    pairs = engine.recommend(current_user.user_id, limit=fetch_limit)
+    pairs = try_mlflow_online_recommendations(db, current_user.user_id, fetch_limit)
+    if pairs is None:
+        pairs = engine.recommend(current_user.user_id, limit=fetch_limit)
+    if mlflow_online_ranker_enabled():
+        response.headers["X-MLflow-Online-Ranker"] = "stub-fallback-heuristic"
     raws = [float(s) for _, s in pairs]
     confs = list_confidence_from_raw(raws)
     ms = (time.perf_counter() - t0) * 1000.0

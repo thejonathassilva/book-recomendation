@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.handlers import register_exception_handlers
 from src.api.routes import admin_console, auth, catalog, purchases, recommendations, users
 from src.monitoring.metrics import API_ERROR_COUNT, metrics_response
+from src.recommendation.online_ranker_gateway import public_ranker_status
 
 app = FastAPI(title="Bookstore ML API", version="1.0.0")
 register_exception_handlers(app)
@@ -26,7 +27,7 @@ app.include_router(admin_console.router, prefix="/api/v1")
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "recommendation_ranker": public_ranker_status()}
 
 
 @app.get("/metrics")

@@ -1,4 +1,14 @@
-"""MLflow model registry promotion. Example: python -m src.training.register --promote-if-better."""
+"""
+Promoção ao MLflow Model Registry (melhor run por métrica).
+
+Encaixe com a API: depois de `mlflow.sklearn.log_model` / `pyfunc.log_model` no treino, o run passa a
+ter artefato em `runs:/<id>/model` — aí `--promote-if-better` cria versão em *Production*.
+A inferência online fica reservada em `src/recommendation/online_ranker_gateway.py` + flag
+`USE_MLFLOW_ONLINE_RANKER` (hoje stub; a API segue no motor heurístico até implementar o load).
+
+Exemplo: python -m src.training.register --metric precision_at_10
+         python -m src.training.register --promote-if-better --metric precision_at_10
+"""
 
 from __future__ import annotations
 
@@ -9,7 +19,9 @@ from mlflow.tracking import MlflowClient
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Seleciona melhor run do experimento e opcionalmente promove ao Model Registry.",
+    )
     parser.add_argument("--promote-if-better", action="store_true")
     parser.add_argument("--metric", default="precision_at_10")
     parser.add_argument("--experiment", default="book-recommendation")

@@ -171,6 +171,7 @@ def main() -> None:
     tracking = os.environ.get("MLFLOW_TRACKING_URI", "file:./mlruns")
     mlflow.set_tracking_uri(tracking)
     mlflow.set_experiment(cfg.get("mlflow", {}).get("experiment_name", "book-recommendation"))
+    batch_tags = {"train_batch_id": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")}
 
     eval_export: dict[str, dict[str, float]] = {}
     export_path = Path(os.environ.get("TRAIN_METRICS_EXPORT_PATH", "data/train_metrics_last.json"))
@@ -185,7 +186,7 @@ def main() -> None:
     )
 
     # Content-based
-    with mlflow.start_run(run_name="content_tfidf"):
+    with mlflow.start_run(run_name="content_tfidf", tags=batch_tags):
         vec, mat_c, book_ids_c = cb.train_content_tfidf(books) if not books.empty else (None, None, [])
         row_map = {bid: i for i, bid in enumerate(book_ids_c)}
 
@@ -201,7 +202,7 @@ def main() -> None:
         mlflow.log_params({"algo": "tfidf", "decay_rate": cfg["hybrid"]["decay_rate"]})
 
     # User-user CF
-    with mlflow.start_run(run_name="collaborative_user_user"):
+    with mlflow.start_run(run_name="collaborative_user_user", tags=batch_tags):
         def rec_cf(uid: int) -> list[int]:
             if uid not in u_map:
                 return []
@@ -216,7 +217,7 @@ def main() -> None:
         mlflow.log_params({"algo": "user_user_cf"})
 
     # SVD
-    with mlflow.start_run(run_name="matrix_svd"):
+    with mlflow.start_run(run_name="matrix_svd", tags=batch_tags):
         train_idx_df = train_r.rename(columns={"u_idx": "user_id", "b_idx": "book_id"})[["user_id", "book_id"]]
         _, uf, bf, _ = mf.train_svd(train_idx_df, n_users, n_books, n_components=64)
 
@@ -231,8 +232,10 @@ def main() -> None:
         eval_export["matrix_svd"] = _log_eval_metrics("matrix_svd", rec_svd, users_to_test, test_rel, k_list)
         mlflow.log_params({"algo": "truncated_svd", "n_factors": 64})
 
-    # Hybrid XGBoost + Neural MLP on interaction sample
-    sample = build_interaction_sample(train_df, books, max_users=800)
+    # Hybrid XGBoost + Neural MLP on interaction sample (cap configurável para caber no case + seed padrão).
+    raw_cap = (cfg.get("training") or {}).get("interaction_sample_max_users", 2000)
+    max_users_sample: int | None = None if raw_cap is None else int(raw_cap)
+    sample = build_interaction_sample(train_df, books, max_users=max_users_sample)
     if not sample.empty:
         xgb_model, meta = hyb.train_xgboost_ranker(sample)
         mlp_model, meta_mlp = ncf.train_mlp(sample)
@@ -240,7 +243,7 @@ def main() -> None:
         if xgb_model is not None and meta:
             feats = meta["features"]
 
-            with mlflow.start_run(run_name="hybrid_xgboost"):
+            with mlflow.start_run(run_name="hybrid_xgboost", tags=batch_tags):
 
                 def rec_xgb(uid: int) -> list[int]:
                     bought = set(train_df[train_df["user_id"] == uid]["book_id"].tolist())
@@ -254,7 +257,7 @@ def main() -> None:
         if mlp_model is not None and meta_mlp:
             feats2 = meta_mlp["features"]
 
-            with mlflow.start_run(run_name="neural_mlp_cf"):
+            with mlflow.start_run(run_name="neural_mlp_cf", tags=batch_tags):
 
                 def rec_mlp(uid: int) -> list[int]:
                     bought = set(train_df[train_df["user_id"] == uid]["book_id"].tolist())
